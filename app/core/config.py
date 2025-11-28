@@ -42,8 +42,8 @@ class Settings(BaseSettings):
     
     # CORS
     CORS_ORIGINS: List[str] = [
-        "http://localhost:3000",
-        "http://localhost:3001"
+        "http://localhost:3031",
+        "http://172.252.13.75:3031"
     ]
     
     # File Upload
