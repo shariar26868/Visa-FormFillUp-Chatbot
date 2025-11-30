@@ -108,3 +108,18 @@ class DeletePDFsResponse(BaseModel):
     failed_count: int
     details: List[Dict]
     message: str
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+    timestamp: Optional[str] = None
+
+class ChatHistoryResponse(BaseModel):
+    success: bool
+    session_id: str
+    state: str
+    total_messages: int
+    history: List[ChatMessage]
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    message: Optional[str] = None
