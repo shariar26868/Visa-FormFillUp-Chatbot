@@ -1380,6 +1380,7 @@ environment:
   MONGO_INITDB_ROOT_USERNAME: admin
   MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
 =======
+```
 ├── main.py                      # FastAPI entry point
 ├── requirements.txt             # Python dependencies
 ├── Dockerfile                   # Docker image config
