@@ -251,7 +251,7 @@ Option 1: Docker Compose (Recommended)
 
 Clone the repository
 
-bashgit clone https://github.com/yourusername/immigration-chatbot.git
+bashgit clone [https://github.com/yourusername/immigration-chatbot.git](https://github.com/shariar26868/Visa-FormFillUp-Chatbot.git)
 cd immigration-chatbot
 
 Create .env file
