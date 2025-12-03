@@ -76,37 +76,6 @@ An intelligent conversational AI system that helps users find, match, and fill v
 - **Mongo Express** - Web-based MongoDB admin interface
 
 ---
-
-## 🏗 Architecture
-```
-┌─────────────────┐
-│   Frontend      │
-│  (React/Next)   │
-└────────┬────────┘
-         │ HTTP/REST
-         ▼
-┌─────────────────────────────┐
-│      FastAPI Backend        │
-│  ┌──────────────────────┐   │
-│  │  Chat Engine         │   │
-│  │  - State Management  │   │
-│  │  - AI Orchestration  │   │
-│  └──────────────────────┘   │
-│  ┌──────────────────────┐   │
-│  │  Form Processing     │   │
-│  │  - OCR (Vision API)  │   │
-│  │  - Field Extraction  │   │
-│  └──────────────────────┘   │
-└─────────┬───────────────────┘
-          │
-    ┌─────┴─────┐
-    ▼           ▼
-┌────────┐  ┌──────────┐
-│MongoDB │  │   AWS S3 │
-│        │  │  (PDFs)  │
-└────────┘  └──────────┘
-```
-
 **Flow Diagram:**
 ```
 User Question → AI Chat → Form Matching → Form Filling → Validation → Completion
