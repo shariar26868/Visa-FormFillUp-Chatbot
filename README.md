@@ -237,34 +237,6 @@ Nginx (optional) - Reverse proxy
 Mongo Express - Database management UI
 
 
-🏗 Architecture
-┌─────────────────┐
-│   Frontend      │
-│  (React/Next)   │
-└────────┬────────┘
-         │ HTTP/REST
-         ▼
-┌─────────────────────────────┐
-│      FastAPI Backend        │
-│  ┌──────────────────────┐   │
-│  │  Chat Engine         │   │
-│  │  - State Management  │   │
-│  │  - AI Orchestration  │   │
-│  └──────────────────────┘   │
-│  ┌──────────────────────┐   │
-│  │  Form Processing     │   │
-│  │  - OCR (Vision API)  │   │
-│  │  - Field Extraction  │   │
-│  └──────────────────────┘   │
-└─────────┬───────────────────┘
-          │
-    ┌─────┴─────┐
-    ▼           ▼
-┌────────┐  ┌──────────┐
-│MongoDB │  │   AWS S3 │
-│        │  │  (PDFs)  │
-└────────┘  └──────────┘
-
 📦 Prerequisites
 
 Docker & Docker Compose (recommended)
