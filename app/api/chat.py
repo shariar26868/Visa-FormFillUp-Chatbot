@@ -1,7 +1,6 @@
 """
-Chat API - Professional Consultation Flow
-IMPROVED: Warm greetings, 5-6 questions, better confirmations
-✅ NEW: Chat history with timestamps
+Chat API - Natural Conversational Flow (Like Claude)
+✅ IMPROVED: Natural conversation, smart answer correction, better memory
 """
 
 import uuid
@@ -24,6 +23,7 @@ from app.services.question_generator import (
 )
 from app.services.answer_validator import validate_answer
 from app.services.conversation_manager import ConversationManager
+from app.services.smart_answer_correction import detect_answer_correction
 
 router = APIRouter()
 
@@ -31,7 +31,7 @@ router = APIRouter()
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """
-    Main chat endpoint - Professional consultation flow
+    Main chat endpoint - Natural conversation like Claude
     """
     
     # Initialize or load session
@@ -98,7 +98,7 @@ async def handle_completed_state(session_id: str, data: dict, message: str):
     answers_count = len(data.get("answers", {}))
     total_fields = len(form.get("fields", []))
     
-    summary_msg = f"Form Completed Successfully! Form: {form['title']}, Visa Type: {form['visa_type']}, Completed: {answers_count}/{total_fields} fields. View full summary: /api/summary/{session_id}. Would you like to fill another form?"
+    summary_msg = f"🎉 Congratulations! You've successfully completed the {form['title']}. All {answers_count} fields are filled. You can view your complete summary at /api/summary/{session_id}. Would you like to fill another visa form?"
     
     return ChatResponse(
         session_id=session_id,
@@ -115,8 +115,47 @@ async def handle_completed_state(session_id: str, data: dict, message: str):
 
 
 async def handle_filling_form_state(session_id: str, data: dict, message: str):
-    """Handle form filling with help support"""
+    """Handle form filling with smart features"""
     try:
+        # ✅ NEW: Check if user is correcting a previous answer
+        correction_result = await detect_answer_correction(session_id, message, data)
+        
+        if correction_result["is_correction"]:
+            # User is fixing a previous answer
+            corrected_field = correction_result["field"]
+            new_answer = correction_result["new_answer"]
+            
+            # Validate the new answer
+            is_valid, validation_msg = await validate_answer(corrected_field, new_answer)
+            
+            if not is_valid:
+                return ChatResponse(
+                    session_id=session_id,
+                    message=f"I understand you want to update '{corrected_field['label']}', but {validation_msg}",
+                    state=settings.STATE_FILLING_FORM,
+                    is_form_ready=False
+                )
+            
+            # Save the corrected answer
+            await ConversationManager.update_specific_answer(
+                session_id, 
+                corrected_field["id"], 
+                new_answer
+            )
+            
+            # Get current field to continue
+            current_field, idx, total = await ConversationManager.get_current_field(session_id)
+            next_question = await generate_question_for_field(current_field, idx, total)
+            
+            response_msg = f"✅ Got it! I've updated your answer for '{corrected_field['label']}'. Now, let's continue: {next_question}"
+            
+            return ChatResponse(
+                session_id=session_id,
+                message=response_msg,
+                state=settings.STATE_FILLING_FORM,
+                is_form_ready=False
+            )
+        
         # Get current field
         field, field_index, total_fields = await ConversationManager.get_current_field(session_id)
         
@@ -129,7 +168,7 @@ async def handle_filling_form_state(session_id: str, data: dict, message: str):
             
             help_text = await generate_help_for_field(field, message)
             
-            help_response = f"Let me help you with this field: {help_text} Once you understand, just type your answer and I'll save it!"
+            help_response = f"{help_text}\n\nOnce you understand, just provide your answer!"
             
             return ChatResponse(
                 session_id=session_id,
@@ -145,7 +184,7 @@ async def handle_filling_form_state(session_id: str, data: dict, message: str):
         is_valid, validation_msg = await validate_answer(field, message)
         
         if not is_valid:
-            invalid_response = f"{validation_msg} Please provide a valid answer. Need help? Just type 'help'"
+            invalid_response = f"{validation_msg} Could you provide that again? (Type 'help' if you need assistance)"
             
             return ChatResponse(
                 session_id=session_id,
@@ -164,7 +203,7 @@ async def handle_filling_form_state(session_id: str, data: dict, message: str):
             form_id = data.get("matched_form_id")
             form = await get_form_by_id(form_id)
             
-            completion_msg = f"Congratulations! Form Completed! You've successfully filled all {total_fields} fields of: {form['title']} ({form['visa_type']}). View Summary: /api/summary/{session_id}. Would you like to fill another visa form?"
+            completion_msg = f"🎉 Excellent! You've completed all {total_fields} fields of the {form['title']}. Your application information is ready! View your summary at /api/summary/{session_id}. Would you like to apply for another visa?"
             
             return ChatResponse(
                 session_id=session_id,
@@ -178,7 +217,7 @@ async def handle_filling_form_state(session_id: str, data: dict, message: str):
         next_field, next_idx, total = await ConversationManager.get_current_field(session_id)
         next_question = await generate_question_for_field(next_field, next_idx, total)
         
-        response_msg = f"Got it! {next_question} Need help? Just type 'help'"
+        response_msg = f"Perfect! {next_question}\n\n(Need help? Just ask!)"
         
         return ChatResponse(
             session_id=session_id,
@@ -205,14 +244,14 @@ async def handle_awaiting_confirmation_state(session_id: str, data: dict, messag
         
         return ChatResponse(
             session_id=session_id,
-            message="Let's start fresh. Which country's visa do you need?",
+            message="Let's start fresh. Which country would you like to visit?",
             state=settings.STATE_CHATTING,
             is_form_ready=False
         )
     
     # Check confirmation
-    yes_words = ["yes", "ok", "okay", "sure", "start", "continue", "proceed", "correct"]
-    no_words = ["no", "not", "don't", "dont", "cancel", "stop"]
+    yes_words = ["yes", "ok", "okay", "sure", "start", "continue", "proceed", "correct", "right"]
+    no_words = ["no", "not", "don't", "dont", "cancel", "stop", "wrong"]
     
     if any(word in message_lower for word in yes_words):
         await ConversationManager.transition_to_form_matched(
@@ -222,7 +261,7 @@ async def handle_awaiting_confirmation_state(session_id: str, data: dict, messag
         
         form = await get_form_by_id(recommended_form["form_id"])
         
-        ready_msg = f"Perfect! Let's proceed with: {form['title']}, Visa Type: {form['visa_type']}, Total Fields: {len(form.get('fields', []))}. May we start filling the form now? Say 'Yes, let's begin'"
+        ready_msg = f"Perfect! ✨ Let's proceed with the {form['title']} ({form['visa_type']}). This form has {len(form.get('fields', []))} fields to fill. Ready to begin? Just say 'yes' or 'let's start'!"
         
         return ChatResponse(
             session_id=session_id,
@@ -246,26 +285,54 @@ async def handle_awaiting_confirmation_state(session_id: str, data: dict, messag
         
         return ChatResponse(
             session_id=session_id,
-            message="No problem! I'm here to help. Which country and visa type would you prefer?",
+            message="No problem! Let me know which country and visa type you'd prefer, and I'll find the right form for you.",
             state=settings.STATE_CHATTING,
             is_form_ready=False
         )
     
-    # Unclear response
-    data["state"] = settings.STATE_CHATTING
-    data["recommended_form"] = None
+    # Unclear response - have natural conversation
+    history = data.get("history", [])
+    history.append({
+        "role": "user",
+        "content": message,
+        "timestamp": datetime.utcnow().isoformat()
+    })
+    
+    system_prompt = f"""You are a helpful visa consultant. The user was offered this form:
+- {recommended_form['title']}
+- {recommended_form['visa_type']} for {recommended_form.get('country', 'Unknown')}
+
+Their response: "{message}"
+
+Respond naturally to clarify if this is the right form. Be conversational and helpful.
+End by asking if they'd like to proceed with this form."""
+    
+    ai_response = await call_openai_chat(
+        messages=history,
+        system_prompt=system_prompt,
+        temperature=0.7,
+        max_tokens=200
+    )
+    
+    history.append({
+        "role": "assistant",
+        "content": ai_response,
+        "timestamp": datetime.utcnow().isoformat()
+    })
+    
+    data["history"] = history
     await save_conversation(session_id, data)
     
     return ChatResponse(
         session_id=session_id,
-        message="No problem! Which country and visa type would you like instead?",
-        state=settings.STATE_CHATTING,
+        message=ai_response,
+        state=settings.STATE_AWAITING_CONFIRMATION,
         is_form_ready=False
     )
 
 
 async def handle_form_matched_state(session_id: str, data: dict, message: str):
-    """Handle form matched - waiting for user confirmation to start"""
+    """Handle form matched - natural conversation before starting"""
     message_lower = message.lower()
     form_id = data.get("matched_form_id")
     form = await get_form_by_id(form_id)
@@ -276,13 +343,13 @@ async def handle_form_matched_state(session_id: str, data: dict, message: str):
         
         return ChatResponse(
             session_id=session_id,
-            message="Sorry, there was an issue. Let's start again. Which visa do you need?",
+            message="Sorry, something went wrong. Let's start again - which visa do you need?",
             state=settings.STATE_CHATTING,
             is_form_ready=False
         )
     
     # Check if user wants to start
-    start_words = ["yes", "start", "begin", "ok", "okay", "sure", "let's", "ready", "proceed"]
+    start_words = ["yes", "start", "begin", "ok", "okay", "sure", "let's", "lets", "ready", "proceed"]
     no_words = ["no", "not", "don't", "dont", "cancel", "stop", "maybe later", "not now"]
     
     if any(word in message_lower for word in start_words):
@@ -292,7 +359,7 @@ async def handle_form_matched_state(session_id: str, data: dict, message: str):
         field, idx, total = await ConversationManager.get_current_field(session_id)
         question = await generate_question_for_field(field, idx, total)
         
-        start_msg = f"Great! Let's begin filling the form. {question} Tip: Type 'help' anytime if you need assistance!"
+        start_msg = f"Great! Let's begin. 📋\n\n{question}\n\n(Tip: You can ask for help anytime, or correct previous answers naturally by just mentioning what you want to change)"
         
         return ChatResponse(
             session_id=session_id,
@@ -302,7 +369,6 @@ async def handle_form_matched_state(session_id: str, data: dict, message: str):
             matched_form=None
         )
     
-    # Check if user declines
     if any(word in message_lower for word in no_words):
         data["state"] = settings.STATE_CHATTING
         data["matched_form_id"] = None
@@ -311,32 +377,31 @@ async def handle_form_matched_state(session_id: str, data: dict, message: str):
         
         return ChatResponse(
             session_id=session_id,
-            message="No problem at all! Take your time. If you need help with visa applications in the future, I'm here!",
+            message="No worries! Take your time. When you're ready for visa assistance, just let me know which country you're interested in.",
             state=settings.STATE_CHATTING,
             is_form_ready=False
         )
     
-    # User asking about the form
+    # User asking questions about the form - have natural conversation
     history = data.get("history", [])
     
-    # ✅ ADD USER MESSAGE WITH TIMESTAMP
     history.append({
         "role": "user", 
         "content": message,
         "timestamp": datetime.utcnow().isoformat()
     })
     
-    system_prompt = f"""You are a helpful visa consultant.
+    system_prompt = f"""You are a friendly, helpful visa consultant. 
 
-The user has been matched with this form:
-- Title: {form['title']}
+The user has been matched with:
+- Form: {form['title']}
 - Visa Type: {form['visa_type']}
 - Country: {form.get('country', 'Unknown')}
 - Total Fields: {len(form.get('fields', []))}
 
-Answer their question in 2-3 sentences.
-Encourage them to start when ready by saying "Yes, let's begin"
-"""
+Respond naturally to their question. Be conversational, warm, and informative.
+Keep responses concise (2-3 sentences).
+Encourage them to start when ready by mentioning they can say "yes" or "let's begin"."""
     
     ai_response = await call_openai_chat(
         messages=history,
@@ -345,7 +410,6 @@ Encourage them to start when ready by saying "Yes, let's begin"
         max_tokens=300
     )
     
-    # ✅ ADD AI RESPONSE WITH TIMESTAMP
     history.append({
         "role": "assistant", 
         "content": ai_response,
@@ -372,25 +436,22 @@ Encourage them to start when ready by saying "Yes, let's begin"
 
 async def handle_chatting_state(session_id: str, data: dict, message: str, history: list):
     """
-    IMPROVED: Warm greetings + 5-6 questions before matching
-    ✅ NEW: Messages saved with timestamps
+    Natural conversation to understand visa needs
+    ✅ IMPROVED: More human-like, less robotic
     """
     
-    # ✅ ADD USER MESSAGE WITH TIMESTAMP
     history.append({
         "role": "user", 
         "content": message,
         "timestamp": datetime.utcnow().isoformat()
     })
     
-    # Count user messages
     user_msg_count = len([m for m in history if m["role"] == "user"])
     
-    # WARM GREETING for first message
+    # First message - warm greeting
     if user_msg_count == 1:
-        greeting = "Hello! Welcome to our Visa Application Assistant! I'm here to help you find and fill the right visa form for your needs. Let's have a quick chat to understand your requirements. To get started, which country would you like to visit?"
+        greeting = "Hello! 👋 I'm here to help you with your visa application. I'll ask you a few questions to find the perfect form for your needs. Let's start - which country would you like to visit?"
         
-        # ✅ ADD GREETING WITH TIMESTAMP
         history.append({
             "role": "assistant", 
             "content": greeting,
@@ -407,38 +468,39 @@ async def handle_chatting_state(session_id: str, data: dict, message: str, histo
             is_form_ready=False
         )
     
-    # PROFESSIONAL CONSULTATION (questions 2-6)
-    system_prompt = """You are a professional visa consultant assistant.
+    # Natural consultation conversation
+    system_prompt = """You are a warm, professional visa consultant - think of yourself as a helpful friend who's an expert in visa applications.
 
-Your role:
-1. Have a warm, natural conversation to understand visa needs
-2. Ask ONE clear question at a time
-3. Focus on: destination country, visa type, purpose, duration, background
-4. Be friendly and patient - 2-3 sentences max per response
-5. Handle uncertainty gracefully ("not sure" = keep asking)
+Your approach:
+- Have a natural conversation to understand their visa needs
+- Ask ONE thoughtful question at a time
+- Be conversational and warm (like talking to a friend, but professional)
+- Keep responses short (2-3 sentences maximum)
+- Focus on: destination country, visa type, purpose, duration, travel history
+- If they're unsure about something, gently guide them to think about it
+- Don't be robotic - be human!
 
 Important:
-- If user says "not sure" or "maybe", ask a different question
-- Don't rush - gather information naturally
-- After 5-6 exchanges, a form will be matched automatically
+- Never use bullet points or lists in conversation
+- Never say generic phrases like "I'm here to help" repeatedly
+- Be specific and personable
+- If they say "I'm not sure", ask a different helpful question
 
-Example questions:
-- "Which country would you like to visit?"
-- "What's the purpose of your trip?"
-- "How long are you planning to stay?"
-- "Have you traveled to this country before?"
+Examples of good questions:
+- "Which country are you planning to visit?"
+- "What brings you there - work, study, or perhaps a vacation?"
+- "How long are you thinking of staying?"
+- "Have you traveled there before?"
 
-Keep it conversational and friendly."""
+Keep it natural and flowing!"""
     
-    # Get AI response
     ai_response = await call_openai_chat(
         messages=history,
         system_prompt=system_prompt,
-        temperature=settings.CHAT_TEMPERATURE,
-        max_tokens=settings.CHAT_MAX_TOKENS
+        temperature=0.8,  # More creative/natural
+        max_tokens=200
     )
     
-    # ✅ ADD AI RESPONSE WITH TIMESTAMP
     history.append({
         "role": "assistant", 
         "content": ai_response,
@@ -448,7 +510,7 @@ Keep it conversational and friendly."""
     data["history"] = history
     await save_conversation(session_id, data)
     
-    # Try matching after 6+ messages (5-6 questions answered)
+    # Try matching after enough conversation
     if user_msg_count >= settings.MIN_MESSAGES_FOR_MATCHING:
         print(f"Attempting form matching (messages: {user_msg_count})...")
         
@@ -457,7 +519,6 @@ Keep it conversational and friendly."""
         if matched:
             return await process_matching_result(session_id, data, matched, ai_response)
     
-    # Continue chatting
     return ChatResponse(
         session_id=session_id,
         message=ai_response,
@@ -473,23 +534,16 @@ async def process_matching_result(session_id: str, data: dict, matched: dict, ai
     if matched.get("form_id") == "OFF_TOPIC":
         return ChatResponse(
             session_id=session_id,
-            message=matched.get("message", "I'm here to help with visa applications. Which country would you like to visit?"),
+            message=matched.get("message", "I specialize in visa applications. What can I help you with regarding visas?"),
             state=settings.STATE_CHATTING,
             is_form_ready=False
         )
     
     # NO MATCH
     if matched.get("form_id") == "NO_MATCH":
-        missing_info = matched.get("missing_info", [])
-        
-        help_msg = matched.get("message", "I need more information to find the right form.")
-        
-        if missing_info:
-            help_msg += " Could you tell me: " + ", ".join(missing_info)
-        
         return ChatResponse(
             session_id=session_id,
-            message=help_msg,
+            message=matched.get("message", "I need a bit more information. Could you tell me which country and visa type you need?"),
             state=settings.STATE_CHATTING,
             is_form_ready=False
         )
@@ -521,11 +575,11 @@ async def process_matching_result(session_id: str, data: dict, matched: dict, ai
             multiple_forms=forms
         )
     
-    # PERFECT SINGLE MATCH
+    # ✅ PERFECT SINGLE MATCH - Keep "Perfect!"
     if matched.get("visa_type"):
         await ConversationManager.transition_to_form_matched(session_id, matched["form_id"])
         
-        match_msg = f"Perfect! I found the right form for you: {matched['title']}, Visa Type: {matched['visa_type']}, Country: {matched.get('country', 'N/A')}, Total Fields: {len(matched.get('fields', []))}. May we proceed with filling this form? Say 'Yes, let's begin' when you're ready!"
+        match_msg = f"Perfect! ✨ I found exactly what you need: {matched['title']} ({matched['visa_type']} for {matched.get('country', 'N/A')}). This form has {len(matched.get('fields', []))} fields. Ready to start filling it out? Just say 'yes' when you're ready!"
         
         return ChatResponse(
             session_id=session_id,
@@ -541,7 +595,6 @@ async def process_matching_result(session_id: str, data: dict, matched: dict, ai
             }
         )
     
-    # Fallback
     return ChatResponse(
         session_id=session_id,
         message=ai_response,
@@ -551,7 +604,7 @@ async def process_matching_result(session_id: str, data: dict, matched: dict, ai
 
 
 async def ai_recommend_from_multiple(forms: list, history: list) -> dict:
-    """Use AI to recommend best form from multiple matches"""
+    """AI recommends best form from multiple matches"""
     conversation_text = " ".join([m["content"] for m in history if m["role"] == "user"])
     
     forms_info = "\n".join([
@@ -559,7 +612,7 @@ async def ai_recommend_from_multiple(forms: list, history: list) -> dict:
         for i, f in enumerate(forms)
     ])
     
-    recommend_prompt = f"""Multiple forms match the user's needs.
+    recommend_prompt = f"""Based on this conversation, recommend the BEST visa form:
 
 CONVERSATION:
 {conversation_text}
@@ -567,19 +620,17 @@ CONVERSATION:
 AVAILABLE FORMS:
 {forms_info}
 
-Choose the BEST form and explain why.
-
 Return JSON:
 {{
   "recommended_index": 0,
-  "explanation": "Based on your needs, this visa is most suitable because..."
+  "explanation": "Warm, natural explanation (2-3 sentences) of why this form suits them best"
 }}"""
     
     try:
         response = await call_openai_chat(
             messages=[{"role": "user", "content": recommend_prompt}],
-            system_prompt="You are a visa recommendation expert. Return only JSON.",
-            temperature=0.6,
+            system_prompt="You are a visa expert. Be warm and conversational. Return only JSON.",
+            temperature=0.7,
             max_tokens=300
         )
         
@@ -597,7 +648,7 @@ Return JSON:
         if 0 <= idx < len(forms):
             recommended = forms[idx]
             
-            message = f"I found {len(forms)} possible forms. I recommend: {recommended['title']}, {recommended['visa_type']} visa for {recommended.get('country', 'N/A')}. {explanation} Is this correct? Say 'Yes' to proceed!"
+            message = f"I found {len(forms)} forms that could work for you. Based on what you've told me, I'd recommend the {recommended['title']} ({recommended['visa_type']} for {recommended.get('country', 'N/A')}). {explanation} Does this sound right?"
             
             return {
                 "recommended_form": recommended,
@@ -609,8 +660,7 @@ Return JSON:
     
     # Fallback
     recommended = forms[0]
-    
-    message = f"I found {len(forms)} matching forms. I recommend: {recommended['title']}, {recommended['visa_type']} for {recommended.get('country', 'N/A')}. This matches your needs best. Say 'Yes' to proceed!"
+    message = f"I found {len(forms)} matching forms. The {recommended['title']} ({recommended['visa_type']} for {recommended.get('country', 'N/A')}) seems like the best fit based on what you've shared. Would you like to use this one?"
     
     return {
         "recommended_form": recommended,

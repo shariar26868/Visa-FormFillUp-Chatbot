@@ -59,3 +59,4 @@ async def call_openai_with_image(
     except Exception as e:
         print(f"❌ Vision API failed: {e}")
         raise Exception(f"Vision error: {str(e)}")
+
