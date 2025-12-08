@@ -208,7 +208,7 @@ async def match_form_from_conversation(conversation: List[Dict]) -> Optional[Dic
         has_context = any(kw in " ".join(user_messages).lower() for kw in context_keywords)
         
         if is_doc_question and not has_context:
-            print(f"📝 Early document question without context - asking for clarification")
+            print(f"Early document question without context - asking for clarification")
             return {
                 "form_id": "NO_MATCH",
                 "title": "Need More Information",
@@ -241,7 +241,7 @@ async def match_form_from_conversation(conversation: List[Dict]) -> Optional[Dic
     # =====================================
     conversation_text = " ".join(user_messages)
     
-    print(f"\n🔍 Form Matching Started")
+    print(f"\nForm Matching Started")
     print(f"   Analyzing: {conversation_text[:100]}...")
     print(f"   Available forms: {len(forms)}")
     
@@ -259,7 +259,7 @@ async def match_form_from_conversation(conversation: List[Dict]) -> Optional[Dic
             "description": f"{form['visa_type']} visa for {form.get('country', 'Unknown')}"
         })
     
-    print(f"📝 Forms Summary:")
+    print(f"Forms Summary:")
     for fs in forms_summary[:5]:  # Show first 5
         print(f"   [{fs['index']}] {fs['title']} - {fs['description']}")
     if len(forms_summary) > 5:
